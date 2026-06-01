@@ -30,8 +30,10 @@ export async function POST(req) {
 
   try {
     const bq = getClient();
+    // Truyền STRING; SQL tự bọc TIMESTAMP(@ts_from) — tránh quirk SDK
+    // làm param TIMESTAMP thành NULL khi nhận chuỗi "YYYY-MM-DD HH:MM:SS".
     const params = { ts_from: from, ts_to: to };
-    const types = { ts_from: "TIMESTAMP", ts_to: "TIMESTAMP" };
+    const types = { ts_from: "STRING", ts_to: "STRING" };
     const [facts] = await bq.query({ query: UNIFIED_FACTS_SQL, params, types });
     const [prodRows] = await bq.query({ query: PRODUCTIVITY_SQL, params, types });
 
