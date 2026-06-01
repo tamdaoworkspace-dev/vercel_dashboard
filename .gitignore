@@ -1,0 +1,15 @@
+node_modules/
+.next/
+.vercel
+out/
+build/
+*.log
+
+# Service account keys — TUYỆT ĐỐI không commit
+service-account*.json
+*-key.json
+gcp*.json
+
+# Env
+.env
+.env*.local
