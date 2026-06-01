@@ -36,7 +36,7 @@ const fmtPct = (n) => `${(n || 0).toFixed(1)}%`;
 const rateColor = (v, good, mid) =>
   v >= good ? C.positive : v >= mid ? C.warm : C.negative;
 
-const PRESETS = ["Hôm qua", "7 ngày", "30 ngày"];
+const PRESETS = ["Hôm nay", "Hôm qua", "7 ngày", "30 ngày"];
 const STAFF_SHORT = {
   "Trần Thị Ngọc Anh": "Ngọc Anh",
   "Nguyễn Thị Thuỳ": "Thuỳ",
@@ -51,7 +51,10 @@ function rangeOf(p) {
   const day = nowVN.getUTCDate();
 
   let fromD, toD;
-  if (p === "Hôm qua") {
+  if (p === "Hôm nay") {
+    fromD = new Date(Date.UTC(y, m, day));
+    toD = new Date(Date.UTC(y, m, day));
+  } else if (p === "Hôm qua") {
     fromD = new Date(Date.UTC(y, m, day - 1));
     toD = new Date(Date.UTC(y, m, day - 1));
   } else if (p === "7 ngày") {
@@ -283,13 +286,22 @@ export default function Dashboard({ password }) {
   const [error, setError] = useState("");
   const [updated, setUpdated] = useState(null);
   const [preset, setPreset] = useState("7 ngày");
+  const [custom, setCustom] = useState({ from: "", to: "" }); // YYYY-MM-DD
   const [filter, setFilter] = useState({ staff: null, channel: null });
+
+  // Khoảng ngày hiện hành: ưu tiên custom nếu đủ 2 mốc, ngược lại theo preset
+  const activeRange = useCallback(() => {
+    if (custom.from && custom.to) {
+      return { from: `${custom.from} 00:00:00`, to: `${custom.to} 23:59:59` };
+    }
+    return rangeOf(preset);
+  }, [custom, preset]);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const { from, to } = rangeOf(preset);
+      const { from, to } = activeRange();
       const r = await fetch("/api/dashboard", {
         method: "POST",
         body: JSON.stringify({ password, from, to }),
@@ -307,7 +319,7 @@ export default function Dashboard({ password }) {
     } finally {
       setLoading(false);
     }
-  }, [preset, password]);
+  }, [activeRange, password]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -335,7 +347,8 @@ export default function Dashboard({ password }) {
       >
         <div className="mx-auto flex max-w-[1400px] flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-              <img src="/logo.png" alt="TDG" className="h-10 w-10 rounded-lg object-contain" />
+            <img src="/logo.png" alt="TDG"
+              className="h-10 w-10 rounded-lg object-contain shadow-glow" />
             <div>
               <h1 className="text-base font-bold tracking-tight text-tdg-text md:text-lg">
                 Dashboard CSKH — TDG Tea
@@ -346,24 +359,48 @@ export default function Dashboard({ password }) {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {/* Date pills */}
             <div className="flex gap-1 rounded-pill border border-tdg-border bg-tdg-card p-1">
-              {PRESETS.map((p) => (
-                <button
-                  key={p}
-                  onClick={() => setPreset(p)}
-                  className="rounded-pill px-3 py-1.5 text-xs font-semibold transition"
-                  style={
-                    preset === p
-                      ? { background: C.accent, color: "#fff" }
-                      : { color: C.secondary }
-                  }
-                >
-                  {p}
-                </button>
-              ))}
+              {PRESETS.map((p) => {
+                const active = !custom.from && !custom.to && preset === p;
+                return (
+                  <button
+                    key={p}
+                    onClick={() => { setCustom({ from: "", to: "" }); setPreset(p); }}
+                    className="rounded-pill px-3 py-1.5 text-xs font-semibold transition"
+                    style={active ? { background: C.accent, color: "#fff" } : { color: C.secondary }}
+                  >
+                    {p}
+                  </button>
+                );
+              })}
             </div>
+
+            {/* Chọn khoảng ngày A → B */}
+            <div className="flex items-center gap-1 rounded-pill border border-tdg-border bg-tdg-card px-2 py-1">
+              <input type="date" aria-label="Từ ngày"
+                value={custom.from}
+                max={custom.to || undefined}
+                onChange={(e) => setCustom((c) => ({ ...c, from: e.target.value }))}
+                className="bg-transparent text-xs text-tdg-text outline-none" />
+              <span className="text-xs text-tdg-secondary">→</span>
+              <input type="date" aria-label="Đến ngày"
+                value={custom.to}
+                min={custom.from || undefined}
+                onChange={(e) => setCustom((c) => ({ ...c, to: e.target.value }))}
+                className="bg-transparent text-xs text-tdg-text outline-none" />
+              {(custom.from || custom.to) && (
+                <button
+                  onClick={() => { setCustom({ from: "", to: "" }); }}
+                  aria-label="Xóa khoảng ngày"
+                  className="ml-1 text-tdg-secondary transition hover:text-tdg-text"
+                >
+                  <X size={13} strokeWidth={2.5} />
+                </button>
+              )}
+            </div>
+
             <button
               onClick={load}
               disabled={loading}
@@ -385,10 +422,14 @@ export default function Dashboard({ password }) {
               <span>Cập nhật {updated.toLocaleTimeString("vi-VN")}</span>
             </>
           )}
-          {data && <span>· {fmtInt(data.records)} bản ghi · {preset}</span>}
+          {data && (
+            <span>
+              · {fmtInt(data.records)} bản ghi · {custom.from && custom.to ? "Tùy chọn" : preset}
+            </span>
+          )}
           {data && (
             <span className="opacity-60">
-              ({rangeOf(preset).from.slice(0, 10)} → {rangeOf(preset).to.slice(0, 10)})
+              ({activeRange().from.slice(0, 10)} → {activeRange().to.slice(0, 10)})
             </span>
           )}
         </div>
