@@ -35,12 +35,7 @@ export default function Page() {
     <div className="flex min-h-screen items-center justify-center bg-tdg-bg px-4">
       <div className="w-full max-w-sm rounded-ios-lg border border-tdg-border bg-tdg-card p-8 shadow-ios animate-scale-in">
         <div className="mb-6 flex justify-center">
-          <div
-            className="flex h-16 w-16 items-center justify-center rounded-full text-xl font-bold text-white shadow-glow"
-            style={{ background: "linear-gradient(135deg, #C8A24D, #A07D2E)" }}
-          >
-            TĐ
-          </div>
+          <img src="/logo.png" alt="TDG" className="h-16 w-16 rounded-2xl object-contain" />
         </div>
         <h1 className="text-center text-xl font-bold text-tdg-text">TDG Analytics</h1>
         <p className="mb-6 text-center text-sm italic text-tdg-secondary">
