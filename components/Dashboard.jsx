@@ -1,13 +1,15 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   ResponsiveContainer, ComposedChart, Area, Line, XAxis, YAxis,
   CartesianGrid, Tooltip, PieChart, Pie, Cell,
+  BarChart, Bar, LabelList,
 } from "recharts";
 import {
   ShoppingBag, CheckCircle2, XCircle, Wallet, Phone, MessageSquareOff,
-  RefreshCw, TrendingUp, TrendingDown, Clock, Users, Ticket, Sparkles,
+  RefreshCw, TrendingUp, TrendingDown, Clock, Users, Ticket, Sparkles, X,
 } from "lucide-react";
+import { buildPayload } from "@/lib/aggregate";
 
 // ── Color tokens (đọc từ CSS var để tự đổi theo light/dark) ──
 const C = {
@@ -42,16 +44,26 @@ const STAFF_SHORT = {
 };
 
 function rangeOf(p) {
-  const to = new Date();
-  const from = new Date();
+  // Lấy "hôm nay" theo giờ Việt Nam (UTC+7) — tránh lệch ngày do server UTC.
+  const nowVN = new Date(Date.now() + 7 * 3600 * 1000);
+  const y = nowVN.getUTCFullYear();
+  const m = nowVN.getUTCMonth();
+  const day = nowVN.getUTCDate();
+
+  let fromD, toD;
   if (p === "Hôm qua") {
-    from.setDate(from.getDate() - 1);
-    to.setDate(to.getDate() - 1);
-  } else if (p === "7 ngày") from.setDate(from.getDate() - 6);
-  else if (p === "30 ngày") from.setDate(from.getDate() - 29);
-  const fmt = (dt, end) =>
-    dt.toISOString().slice(0, 10) + (end ? " 23:59:59" : " 00:00:00");
-  return { from: fmt(from, false), to: fmt(to, true) };
+    fromD = new Date(Date.UTC(y, m, day - 1));
+    toD = new Date(Date.UTC(y, m, day - 1));
+  } else if (p === "7 ngày") {
+    fromD = new Date(Date.UTC(y, m, day - 6));
+    toD = new Date(Date.UTC(y, m, day));
+  } else {
+    // 30 ngày
+    fromD = new Date(Date.UTC(y, m, day - 29));
+    toD = new Date(Date.UTC(y, m, day));
+  }
+  const iso = (dt) => dt.toISOString().slice(0, 10); // YYYY-MM-DD
+  return { from: `${iso(fromD)} 00:00:00`, to: `${iso(toD)} 23:59:59` };
 }
 
 // ════════════════════════════════════════════════════════════
@@ -148,12 +160,17 @@ function ProgressBar({ value, target, color }) {
 // ════════════════════════════════════════════════════════════
 //   Staff card
 // ════════════════════════════════════════════════════════════
-function StaffCard({ s, delay }) {
+function StaffCard({ s, delay, active, onClick }) {
   const okRate = s.donAll ? (s.donOk / s.donAll) * 100 : 0;
   return (
     <div
-      className="animate-fade-up rounded-ios border border-tdg-border bg-tdg-card p-4 shadow-ios"
-      style={{ animationDelay: `${delay}ms` }}
+      onClick={onClick}
+      className="animate-fade-up cursor-pointer rounded-ios border bg-tdg-card p-4 shadow-ios transition hover:-translate-y-0.5"
+      style={{
+        animationDelay: `${delay}ms`,
+        borderColor: active ? "var(--tdg-accent)" : "var(--tdg-border)",
+        borderWidth: active ? 2 : 1,
+      }}
     >
       <div className="mb-3 flex items-center gap-2.5">
         <div
@@ -213,15 +230,60 @@ function Metric({ label, value, sub, badge, badgeColor, accent }) {
   );
 }
 
+// ── Gauge bán nguyệt SVG: tỷ lệ thu SĐT (ngưỡng 40/65/80) ──
+function PhoneGauge({ value }) {
+  const v = Math.max(0, Math.min(100, value || 0));
+  const R = 80, CX = 100, CY = 100, W = 18;
+  // Góc: 180° (trái) → 0° (phải)
+  const polar = (pct) => {
+    const ang = Math.PI * (1 - pct / 100);
+    return [CX + R * Math.cos(ang), CY - R * Math.sin(ang)];
+  };
+  const arc = (from, to, color) => {
+    const [x1, y1] = polar(from);
+    const [x2, y2] = polar(to);
+    const large = to - from > 50 ? 1 : 0;
+    return (
+      <path
+        d={`M ${x1} ${y1} A ${R} ${R} 0 ${large} 1 ${x2} ${y2}`}
+        fill="none" stroke={color} strokeWidth={W} strokeLinecap="round"
+      />
+    );
+  };
+  const [nx, ny] = polar(v);
+  const col = rateColor(v, 65, 40);
+  return (
+    <div className="flex flex-col items-center">
+      <svg viewBox="0 0 200 120" className="w-full max-w-[260px]">
+        {/* nền các vùng ngưỡng */}
+        {arc(0, 40, "var(--tdg-grid)")}
+        {arc(40, 65, "rgba(212,130,90,0.35)")}
+        {arc(65, 80, "rgba(200,162,77,0.4)")}
+        {arc(80, 100, "rgba(93,138,60,0.4)")}
+        {/* kim giá trị */}
+        {arc(0, Math.max(v, 0.5), col)}
+        <circle cx={nx} cy={ny} r="6" fill={col} stroke="var(--tdg-card)" strokeWidth="2.5" />
+        <text x={CX} y="88" textAnchor="middle" fontSize="30" fontWeight="700" fill="var(--tdg-text)">
+          {v.toFixed(1)}%
+        </text>
+      </svg>
+      <div className="mt-1 text-center text-[11px] text-tdg-secondary">
+        Mục tiêu <b style={{ color: C.positive }}>80%</b> · ngưỡng 40 / 65 / 80
+      </div>
+    </div>
+  );
+}
+
 // ════════════════════════════════════════════════════════════
 //   MAIN
 // ════════════════════════════════════════════════════════════
 export default function Dashboard({ password }) {
-  const [data, setData] = useState(null);
+  const [raw, setRaw] = useState(null);   // dữ liệu thô từ API (facts + prodRows)
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [updated, setUpdated] = useState(null);
   const [preset, setPreset] = useState("7 ngày");
+  const [filter, setFilter] = useState({ staff: null, channel: null });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -236,7 +298,8 @@ export default function Dashboard({ password }) {
       if (json.error) {
         setError(json.error);
       } else {
-        setData(json);
+        setRaw(json);
+        setFilter({ staff: null, channel: null }); // reset lọc khi đổi khoảng ngày
         setUpdated(new Date());
       }
     } catch (e) {
@@ -247,6 +310,19 @@ export default function Dashboard({ password }) {
   }, [preset, password]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Tổng hợp lại mỗi khi raw hoặc filter đổi (tức thì, không query lại)
+  const data = useMemo(() => {
+    if (!raw?.facts) return null;
+    return buildPayload(raw.facts, raw.prodRows || [], filter);
+  }, [raw, filter]);
+
+  const toggleStaff = (name) =>
+    setFilter((f) => ({ ...f, staff: f.staff === name ? null : name }));
+  const toggleChannel = (name) =>
+    setFilter((f) => ({ ...f, channel: f.channel === name ? null : name }));
+  const clearFilter = () => setFilter({ staff: null, channel: null });
+  const hasFilter = filter.staff || filter.channel;
 
   const c = data?.cskh;
 
@@ -315,7 +391,35 @@ export default function Dashboard({ password }) {
             </>
           )}
           {data && <span>· {fmtInt(data.records)} bản ghi · {preset}</span>}
+          {data && (
+            <span className="opacity-60">
+              ({rangeOf(preset).from.slice(0, 10)} → {rangeOf(preset).to.slice(0, 10)})
+            </span>
+          )}
         </div>
+
+        {/* Chip bộ lọc đang bật */}
+        {hasFilter && (
+          <div className="flex flex-wrap items-center gap-2 animate-fade-up">
+            <span className="text-xs text-tdg-secondary">Đang lọc:</span>
+            {filter.staff && (
+              <FilterChip
+                label={STAFF_SHORT[filter.staff] || filter.staff}
+                onClear={() => toggleStaff(filter.staff)}
+              />
+            )}
+            {filter.channel && (
+              <FilterChip label={filter.channel} onClear={() => toggleChannel(filter.channel)} />
+            )}
+            <button
+              onClick={clearFilter}
+              className="text-xs font-semibold underline-offset-2 hover:underline"
+              style={{ color: C.accent }}
+            >
+              Xóa tất cả
+            </button>
+          </div>
+        )}
 
         {error && (
           <div className="rounded-ios border border-tdg-negative/40 bg-tdg-negative/10 p-4 text-sm text-tdg-negative">
@@ -383,25 +487,83 @@ export default function Dashboard({ password }) {
                     <PieChart>
                       <Pie data={data.channelDonut} dataKey="value" nameKey="name"
                         cx="50%" cy="50%" innerRadius="55%" outerRadius="80%"
-                        paddingAngle={2} stroke="none">
-                        {data.channelDonut.map((_, i) => (
-                          <Cell key={i} fill={DONUT[i % DONUT.length]} />
-                        ))}
+                        paddingAngle={2} stroke="none"
+                        onClick={(e) => e?.name && toggleChannel(e.name)}
+                        style={{ cursor: "pointer", outline: "none" }}>
+                        {data.channelDonut.map((entry, i) => {
+                          const dim = filter.channel && filter.channel !== entry.name;
+                          return (
+                            <Cell key={i} fill={DONUT[i % DONUT.length]}
+                              fillOpacity={dim ? 0.25 : 1} />
+                          );
+                        })}
                       </Pie>
                       <Tooltip content={<ChartTooltip />} />
                     </PieChart>
                   </ResponsiveContainer>
                   <div className="mt-2 space-y-1.5">
-                    {data.channelDonut.map((d, i) => (
-                      <div key={i} className="flex items-center justify-between text-xs">
-                        <span className="flex items-center gap-2 text-tdg-secondary">
-                          <span className="h-2.5 w-2.5 rounded-sm"
-                            style={{ background: DONUT[i % DONUT.length] }} />
-                          {d.name}
-                        </span>
-                        <span className="font-semibold text-tdg-text">{fmtInt(d.value)}</span>
-                      </div>
-                    ))}
+                    {data.channelDonut.map((row, i) => {
+                      const active = filter.channel === row.name;
+                      return (
+                        <button key={i}
+                          onClick={() => toggleChannel(row.name)}
+                          className="flex w-full items-center justify-between rounded-md px-1.5 py-0.5 text-xs transition hover:bg-tdg-elev"
+                          style={active ? { background: "var(--tdg-elev)" } : undefined}>
+                          <span className="flex items-center gap-2 text-tdg-secondary">
+                            <span className="h-2.5 w-2.5 rounded-sm"
+                              style={{ background: DONUT[i % DONUT.length],
+                                opacity: filter.channel && !active ? 0.3 : 1 }} />
+                            {row.name}
+                          </span>
+                          <span className="font-semibold text-tdg-text">{fmtInt(row.value)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </ChartCard>
+              </div>
+            </Section>
+
+            {/* ═══ Phân tích chi tiết: bar nhân sự + gauge SĐT ═══ */}
+            <Section title="Phân tích chi tiết">
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+                <ChartCard title="Đơn hàng theo nhân sự — bấm để lọc" className="lg:col-span-2">
+                  {data.staffOrders?.length ? (
+                    <ResponsiveContainer width="100%" height={280}>
+                      <BarChart data={data.staffOrders} layout="vertical"
+                        margin={{ left: 8, right: 36, top: 4, bottom: 4 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke={C.grid} horizontal={false} />
+                        <XAxis type="number" tick={{ fill: C.secondary, fontSize: 11 }}
+                          axisLine={false} tickLine={false} />
+                        <YAxis type="category" dataKey="short" width={90}
+                          tick={{ fill: C.text, fontSize: 12 }} axisLine={false} tickLine={false} />
+                        <Tooltip content={<StaffBarTooltip />} cursor={{ fill: "var(--tdg-grid)" }} />
+                        <Bar dataKey="don" name="Đơn" radius={[0, 6, 6, 0]}
+                          barSize={22} style={{ cursor: "pointer" }}
+                          onClick={(e) => e?.staff_name && toggleStaff(e.staff_name)}>
+                          {data.staffOrders.map((entry, i) => {
+                            const dim = filter.staff && filter.staff !== entry.staff_name;
+                            return (
+                              <Cell key={i} fill="var(--tdg-accent)"
+                                fillOpacity={dim ? 0.3 : 1} />
+                            );
+                          })}
+                          <LabelList dataKey="don" position="right"
+                            style={{ fill: "var(--tdg-text)", fontSize: 11, fontWeight: 600 }} />
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <Empty />
+                  )}
+                </ChartCard>
+
+                <ChartCard title="Tỷ lệ thu SĐT">
+                  <div className="flex h-[280px] flex-col items-center justify-center">
+                    <PhoneGauge value={c.phoneRate} />
+                    <div className="mt-3 text-center text-xs text-tdg-secondary">
+                      {fmtInt(c.phoneN)} / {fmtInt(c.donAll)} đơn có SĐT
+                    </div>
                   </div>
                 </ChartCard>
               </div>
@@ -451,7 +613,11 @@ export default function Dashboard({ password }) {
             {/* ═══ Năng suất nhân sự ═══ */}
             <Section title="Năng suất nhân sự">
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-                {data.prod.map((s, i) => <StaffCard key={s.nhanSu} s={s} delay={i * 60} />)}
+                {data.prod.map((s, i) => (
+                  <StaffCard key={s.nhanSu} s={s} delay={i * 60}
+                    active={filter.staff === s.nhanSu}
+                    onClick={() => toggleStaff(s.nhanSu)} />
+                ))}
               </div>
             </Section>
 
@@ -463,6 +629,41 @@ export default function Dashboard({ password }) {
         )}
       </main>
     </div>
+  );
+}
+
+function StaffBarTooltip({ active, payload }) {
+  if (!active || !payload?.length) return null;
+  const p = payload[0].payload;
+  return (
+    <div className="rounded-xl border px-3 py-2 text-xs shadow-lg"
+      style={{ background: "var(--tdg-tooltip-bg)", borderColor: "var(--tdg-border)",
+        backdropFilter: "blur(12px)", color: C.text }}>
+      <div className="mb-1 font-semibold">{p.staff_name}</div>
+      <div className="text-tdg-secondary">Đơn: <b style={{ color: C.text }}>{fmtInt(p.don)}</b></div>
+      <div className="text-tdg-secondary">Doanh thu: <b style={{ color: C.accent }}>{fmtVND(p.doanhThu)}</b></div>
+    </div>
+  );
+}
+
+function Empty() {
+  return (
+    <div className="flex h-[280px] items-center justify-center text-sm text-tdg-secondary">
+      Chưa có dữ liệu trong khoảng đã chọn
+    </div>
+  );
+}
+
+function FilterChip({ label, onClear }) {
+  return (
+    <button
+      onClick={onClear}
+      className="flex items-center gap-1 rounded-pill px-2.5 py-1 text-xs font-semibold transition active:scale-95"
+      style={{ background: "var(--tdg-accent)", color: "#fff" }}
+    >
+      {label}
+      <X size={13} strokeWidth={2.5} />
+    </button>
   );
 }
 
