@@ -335,12 +335,7 @@ export default function Dashboard({ password }) {
       >
         <div className="mx-auto flex max-w-[1400px] flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div
-              className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white shadow-glow"
-              style={{ background: "linear-gradient(135deg,#C8A24D,#A07D2E)" }}
-            >
-              TĐ
-            </div>
+              <img src="/logo.png" alt="TDG" className="h-10 w-10 rounded-lg object-contain" />
             <div>
               <h1 className="text-base font-bold tracking-tight text-tdg-text md:text-lg">
                 Dashboard CSKH — TDG Tea
