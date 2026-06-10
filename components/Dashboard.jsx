@@ -147,19 +147,6 @@ function ChartTooltip({ active, payload, label }) {
   );
 }
 
-// ── Mini progress bar (gauge thay thế) ──
-function ProgressBar({ value, target, color }) {
-  const pct = Math.min(100, (value / target) * 100);
-  return (
-    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full" style={{ background: C.grid }}>
-      <div
-        className="h-full rounded-full transition-all duration-700"
-        style={{ width: `${pct}%`, background: color }}
-      />
-    </div>
-  );
-}
-
 // ════════════════════════════════════════════════════════════
 //   Staff card
 // ════════════════════════════════════════════════════════════
@@ -471,14 +458,15 @@ export default function Dashboard({ password }) {
             <Section title="CSKH lên tay — theo nhân sự tạo đơn">
               <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
                 <KPICard icon={ShoppingBag} label="Tổng đơn" value={fmtInt(c.donAll)}
-                  sub={fmtVND(c.rev)} delay={0} />
+                  sub={`DT tạm tính ${fmtVND(c.rev)}`} delay={0} />
                 <KPICard icon={CheckCircle2} label="Đơn thành công" value={fmtInt(c.donOk)}
                   badge={c.donAll ? `${((c.donOk / c.donAll) * 100).toFixed(0)}%` : "—"}
                   badgeColor={C.positive} sub={fmtVND(c.revOk)} delay={40} />
                 <KPICard icon={XCircle} label="Đơn thất bại" value={fmtInt(c.donFail)}
                   badge={c.donAll ? `${((c.donFail / c.donAll) * 100).toFixed(0)}%` : "—"}
                   badgeColor={C.negative} delay={80} />
-                <KPICard icon={Wallet} label="Doanh thu" value={fmtVND(c.rev)} delay={120} />
+                <KPICard icon={Wallet} label="Doanh thu" value={fmtVND(c.revOk)}
+                  sub="Đơn thành công" delay={120} />
                 <KPICard icon={Phone} label="Tỷ lệ thu SĐT" value={fmtPct(c.phoneRate)}
                   badge={`${fmtInt(c.phoneN)} đơn`}
                   badgeColor={rateColor(c.phoneRate, 65, 40)}
@@ -602,33 +590,6 @@ export default function Dashboard({ password }) {
                     </div>
                   </div>
                 </ChartCard>
-              </div>
-            </Section>
-
-            {/* ═══ Sàn TMĐT ═══ */}
-            <Section title="Sàn thương mại điện tử">
-              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                {data.san.map((s, i) => {
-                  const okR = s.n ? (s.ok / s.n) * 100 : 0;
-                  return (
-                    <div key={i}
-                      className="animate-fade-up rounded-ios border border-tdg-border bg-tdg-card p-4 shadow-ios"
-                      style={{ animationDelay: `${i * 50}ms` }}>
-                      <div className="mb-1 text-sm font-semibold text-tdg-text">{s.name}</div>
-                      <div className="text-[22px] font-bold tracking-tight text-tdg-text">
-                        {fmtInt(s.n)}
-                      </div>
-                      <div className="mt-1 flex items-center gap-2 text-[11px]">
-                        <span style={{ color: C.positive }}>TC {fmtInt(s.ok)} ({okR.toFixed(0)}%)</span>
-                        <span style={{ color: C.negative }}>TB {fmtInt(s.fail)}</span>
-                      </div>
-                      <div className="mt-1.5 text-xs font-semibold" style={{ color: C.accent }}>
-                        {fmtVND(s.rev)}
-                      </div>
-                      <ProgressBar value={s.ok} target={s.n || 1} color={C.accent} />
-                    </div>
-                  );
-                })}
               </div>
             </Section>
 
